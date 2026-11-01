@@ -1,14 +1,27 @@
 # Cosmos .NET — Salvapantallas Espacial 3D
 
-Salvapantallas interactivo y procedural para Windows desarrollado en **.NET 9 (WPF + SkiaSharp)** con estética espacial moderna inspirada en la pantalla inicial y los viajes hiperespaciales de *No Man's Sky*.
+Salvapantallas interactivo y procedural para Windows desarrollado en **.NET 9 (WPF + SkiaSharp)** con estética espacial moderna inspirada en los viajes hiperespaciales de *No Man's Sky*.
+
+---
+
+## 📸 Capturas en Tiempo Real (1080p)
+
+### 1. Vuelo Interestelar con Agujeros Negros y Lente Gravitacional
+![Vuelo Interestelar 3D](docs/assets/preview_flight.png)
+
+### 2. Hiperespacio Neón con Panel Sci-Fi Rotatorio
+![Hiperespacio Neón](docs/assets/preview_neon.png)
+
+### 3. Sistemas Planetarios Completos en Perspectiva 3D
+![Sistemas Solares 3D](docs/assets/preview_solar_systems.png)
 
 ---
 
 ## 🚀 Características Principales
 
 * **Vuelo Espacial 3D en Tiempo Real**: Proyección matemática en perspectiva tridimensional hacia adelante, con balanceo suave de cabina y estelas de velocidad de hiperespacio (*Warp trails*).
-* **Sistemas Solares Completos**: Soles brillantes con corona, rodeados de planetas con iluminación día/noche según su sol, gigantes gaseosos con anillos y lunas orbitando.
-* **Agujeros Negros con Lente Gravitacional**: Deformación de la luz de fondo según la fórmula de Einstein, curvando y estirando en arcos de luz las estrellas y galaxias que pasan detrás.
+* **Sistemas Solares Completos**: Soles brillantes con corona, rodeados de planetas con iluminación día/noche según su sol central, gigantes gaseosos con anillos inclinados y lunas orbitando.
+* **Agujeros Negros con Lente Gravitacional**: Deformación de la luz de fondo según la fórmula de Einstein, curvando y estirando en arcos de luz las estrellas y galaxias que pasan detrás del horizonte de sucesos.
 * **Galaxias y Nebulosas Procedurales**: Galaxias espirales (con brazos logarítmicos y regiones de formación estelar H-II), galaxias elípticas ancestrales y nebulosas volumétricas con mezcla de luz aditiva.
 * **Panel Holográfico de Cabina Sci-Fi**:
   * Reloj vectorial futurista de gran formato pensado para pantallas de salón y televisores.

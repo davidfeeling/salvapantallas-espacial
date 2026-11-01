@@ -1,0 +1,45 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Build & Package Release
+        shell: powershell
+        run: |
+          .\scripts\build-release.ps1
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosScreensaver-Binaries
+          path: |
+            dist/CosmosScreensaver.scr
+            dist/CosmosInstaller.exe
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/CosmosScreensaver.scr
+            dist/CosmosInstaller.exe
+          generate_release_notes: true

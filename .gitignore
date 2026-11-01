@@ -1,0 +1,22 @@
+## Build and Output Folders
+bin/
+obj/
+dist/
+publish/
+Payload/
+
+## Visual Studio & Rider
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+*.suo
+
+## Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+## Log files
+*.log

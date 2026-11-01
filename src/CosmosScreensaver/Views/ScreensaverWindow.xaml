@@ -1,0 +1,19 @@
+<Window x:Class="CosmosScreensaver.Views.ScreensaverWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:engine="clr-namespace:CosmosScreensaver.Engine"
+        Title="Cosmos .NET Screensaver"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="#020308"
+        Cursor="None"
+        KeyDown="OnUserActivity"
+        MouseDown="OnUserActivity"
+        MouseWheel="OnUserActivity"
+        MouseMove="OnMouseMove">
+    <Grid>
+        <engine:CosmosCanvasControl x:Name="SpaceCanvas" />
+    </Grid>
+</Window>

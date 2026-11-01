@@ -1,41 +1,43 @@
-# Cosmos .NET — Salvapantallas Espacial 3D
+# Cosmos .NET — Salvapantallas Espacial 3D (Rama: `feature/puntos-de-luz`)
 
-Salvapantallas interactivo y procedural para Windows desarrollado en **.NET 9 (WPF + SkiaSharp)** con estética espacial moderna inspirada en los viajes hiperespaciales de *No Man's Sky*.
+Salvapantallas interactivo y procedural para Windows desarrollado en **.NET 9 (WPF + SkiaSharp)** con simulación física y matemática en tiempo real mediante **puntos de luz (point lights)**.
 
----
-
-## 📸 Capturas en Tiempo Real (1080p)
-
-### 1. Vuelo Interestelar con Agujeros Negros y Lente Gravitacional
-![Vuelo Interestelar 3D](docs/assets/preview_flight.png)
-
-### 2. Hiperespacio Neón con Panel Sci-Fi Rotatorio
-![Hiperespacio Neón](docs/assets/preview_neon.png)
-
-### 3. Sistemas Planetarios Completos en Perspectiva 3D
-![Sistemas Solares 3D](docs/assets/preview_solar_systems.png)
+> [!NOTE]
+> **100% Matemático — Cero GIFs y Cero Mapas de Bits (Bitmaps)**  
+> En esta rama se han eliminado por completo las texturas estáticas, GIFs y bitmaps pre-renderizados. Cada estrella, nebulosa, brazo galáctico y agujero negro se calcula matemáticamente fotograma a fotograma como enjambres de puntos de luz regidos por física gravitacional y óptica relativista.
 
 ---
 
-## 🚀 Características Principales
+## 📸 Capturas de la Simulación Matemática de Puntos de Luz (1080p)
 
-* **Vuelo Espacial 3D en Tiempo Real**: Proyección matemática en perspectiva tridimensional hacia adelante, con balanceo suave de cabina y estelas de velocidad de hiperespacio (*Warp trails*).
-* **Sistemas Solares Completos**: Soles brillantes con corona, rodeados de planetas con iluminación día/noche según su sol central, gigantes gaseosos con anillos inclinados y lunas orbitando.
-* **Agujeros Negros con Lente Gravitacional**: Deformación de la luz de fondo según la fórmula de Einstein, curvando y estirando en arcos de luz las estrellas y galaxias que pasan detrás del horizonte de sucesos.
-* **Galaxias y Nebulosas Procedurales**: Galaxias espirales (con brazos logarítmicos y regiones de formación estelar H-II), galaxias elípticas ancestrales y nebulosas volumétricas con mezcla de luz aditiva.
+### 1. Enjambres Relativistas de Puntos de Luz (Agujero Negro, Galaxias y Nebulosas)
+![Simulación de Puntos de Luz 1](docs/assets/preview_pointlights_1.png)
+
+### 2. Disco de Acreción con Efecto Doppler Beaming y Lente Gravitacional de Einstein
+![Simulación de Puntos de Luz 2](docs/assets/preview_pointlights_2.png)
+
+---
+
+## 🔬 Modelos Matemáticos y Procesos Implementados
+
+* **Agujeros Negros (Mecánica Relativista por Puntos de Luz)**:
+  * **Disco de Acreción Kepleriano**: Más de 1.100 puntos de luz individuales orbitando la singularidad con velocidad angular relativista $\Omega(r) = \frac{v_0}{r^{1.5}}$ y perfil térmico $T(r) \propto r^{-3/4}$.
+  * **Efecto Doppler Relativista (Beaming)**: Las partículas que giran en dirección al observador sufren amplificación de brillo $\delta^{2.8}$ y desplazamiento al azul/blanco ultracaliente, mientras que las que se alejan se atenúan y se desplazan al rojo.
+  * **Lente Gravitacional de Einstein en el propio disco**: La luz de las partículas situadas detrás del horizonte se curva sobre y bajo la esfera negra siguiendo la métrica de Schwarzschild, creando el arco gravitacional superior e inferior característico de *Gargantua*.
+  * **Esfera de Fotones ($r = 1.5 r_s$)**: Anillo fino y ultrabrillante de fotones en órbita inestable.
+  * **Jets Polares Helicoidales**: Eyección relativista de partículas que giran en espiral a lo largo de líneas de campo magnético.
+* **Estrellas y Vuelo Hiperespacial 3D**:
+  * Puntos de luz 3D $(X, Y, Z)$ con atenuación fotométrica según la ley del inverso del cuadrado $I \propto 1/Z^2$.
+  * Integración de estelas Warp a lo largo de la trayectoria de avance de la nave.
+  * Desviación gravitacional de Einstein por cada rayo estelar que pasa cerca de un agujero negro en pantalla ($\Delta \vec{x} \propto r_E^2 / d^2$).
+* **Galaxias por Ondas de Densidad Espirales**:
+  * Miles de estrellas / puntos de luz individuales generados según la ecuación de espiral logarítmica $r(\theta) = a \cdot e^{b\theta}$ con dispersión gaussiana perpendicular y curva de rotación galáctica plana (materia oscura).
+* **Nebulosas Volumétricas**:
+  * Nubes de puntos de luz de gas ionizado con deriva armónica tridimensional y gradientes radiales continuos sin bordes duros.
 * **Panel Holográfico de Cabina Sci-Fi**:
-  * Reloj vectorial futurista de gran formato pensado para pantallas de salón y televisores.
-  * Radar 3D de proximidad en vivo y telemetría de potencia Warp.
-  * **Protección Anti-Burn-in**: Flota continuamente y se traslada automáticamente entre las cuatro esquinas de la pantalla cada 40 segundos para evitar quemados en paneles OLED y televisores.
-* **Panel de Configuración Completo (`/c`)**:
-  * Visor en vivo (*Live Preview*) interactivo a 60 FPS con botón para regenerar la ruta.
-  * Toggles para activar/desactivar cada tipo de objeto de forma independiente.
-  * Control total de densidades (estrellas, sistemas solares, galaxias, nebulosas, etc.).
-  * Ajustes de velocidad de simulación, impulso Warp, resplandor óptico (*Glow/Bloom*) y 4 paletas de color (*Astrofísica Realista JWST*, *Cyberpunk Neón*, *Azul Abisal*, *Oro Solar*).
-* **Instalador Integrado (`CosmosInstaller.exe`)**:
-  * Instala y activa el protector de pantalla en Windows en un clic.
-  * Configura el tiempo de espera en el registro del sistema y crea accesos directos.
-  * Permite abrir el configurador o probar el salvapantallas a pantalla completa.
+  * Reloj vectorial de gran formato con dígitos futuristas de 7 segmentos.
+  * Radar 3D con barrido en vivo de sistemas y singularidades cercanas.
+  * **Protección Anti-Burn-in**: Rotación automática periódica entre las cuatro esquinas de la pantalla para paneles OLED y pantallas de salón.
 
 ---
 
@@ -43,23 +45,15 @@ Salvapantallas interactivo y procedural para Windows desarrollado en **.NET 9 (W
 
 * **.NET 9.0 (`net9.0-windows`)**
 * **C# 13**
-* **WPF** para integración con ventanas Win32 (`HWND`), soporte multi-monitor y panel de configuración.
-* **SkiaSharp** para el motor de renderizado acelerado con shaders radiales, blends aditivos y filtros ópticos.
+* **SkiaSharp** (renderizado vectorial acelerado con blending aditivo `SKBlendMode.Plus`)
+* **WPF** (gestión multi-monitor, interop Win32 `/s`, `/c`, `/p` y GUI de configuración)
 
 ---
 
-## 📦 Compilación y Empaquetado
+## 📦 Compilación
 
-Para compilar y generar los binarios listos para usar (`CosmosScreensaver.scr` y `CosmosInstaller.exe` en la carpeta `dist/`):
+Para compilar y empaquetar los ejecutables finales (`CosmosScreensaver.scr` y `CosmosInstaller.exe` en `dist/`):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 ```
-
----
-
-## 💻 Protocolo de Salvapantallas de Windows
-
-* `CosmosScreensaver.scr /s`: Ejecución a pantalla completa en todos los monitores detectados.
-* `CosmosScreensaver.scr /c`: Abre la ventana de configuración con vista previa en tiempo real.
-* `CosmosScreensaver.scr /p <HWND>`: Modo de vista previa en miniatura para el cuadro de diálogo clásico de Windows (`desk.cpl`).

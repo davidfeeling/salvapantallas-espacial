@@ -63,11 +63,21 @@ public static class CosmicPointLightMath
             float size = Math.Clamp((0.85f + (1f - tempFactor) * 1.6f) * glowBoost, 0.7f, 3.2f);
             float luminosity = (0.50f + 0.50f * tempFactor) * glowBoost;
 
+            // Precalcular invariantes relativistas para ahorrar raíces cuadradas y divisiones en cada fotograma
+            float normRadius = (r / BlackHoleIscoRadius) * 1.25f;
+            float vOrb = 0.55f / MathF.Sqrt(Math.Max(1.0f, r / BlackHoleIscoRadius));
+            float invGamma = MathF.Sqrt(Math.Max(0.05f, 1.0f - vOrb * vOrb));
+            float lensedRadiusFactor = 1.25f + 0.38f * (r - BlackHoleIscoRadius) / (BlackHoleOuterRadius - BlackHoleIscoRadius);
+
             particles[i] = new AccretionDiskParticle
             {
                 Radius = r,
+                NormalizedRadius = normRadius,
                 InitialAngle = (float)(rng.NextDouble() * Math.PI * 2.0),
                 OrbitalSpeed = orbitalSpeed,
+                VOrb = vOrb,
+                InvGamma = invGamma,
+                LensedRadiusFactor = lensedRadiusFactor,
                 HeightFlaring = flaring,
                 BaseSize = size,
                 BaseColor = color,

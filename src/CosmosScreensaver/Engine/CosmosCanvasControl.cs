@@ -28,6 +28,7 @@ public sealed class CosmosCanvasControl : FrameworkElement, IDisposable
         Focusable = false;
         IsHitTestVisible = false;
         SnapsToDevicePixels = true;
+        RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.Linear);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -72,7 +73,8 @@ public sealed class CosmosCanvasControl : FrameworkElement, IDisposable
 
         TimeSpan now = _stopwatch.Elapsed;
         double dtSeconds = (now - _lastRenderTime).TotalSeconds;
-        if (dtSeconds < 0.004) return; // Evitar llamadas duplicadas en el mismo VSync
+        double minFrameInterval = IsMiniPreview ? 0.032 : 0.0155; // Tope eficiente a ~60 FPS (30 FPS en mini-preview)
+        if (dtSeconds < minFrameInterval) return;
 
         _lastRenderTime = now;
         _frameCount++;
@@ -99,13 +101,24 @@ public sealed class CosmosCanvasControl : FrameworkElement, IDisposable
         int pixelWidth = Math.Max(4, (int)Math.Ceiling(dipW * dpi.DpiScaleX));
         int pixelHeight = Math.Max(4, (int)Math.Ceiling(dipH * dpi.DpiScaleY));
 
+        // Limitar resolución interna a 1080p equivalentes para evitar sobrecarga CPU/PCIe en monitores 4K,
+        // delegando el reescalado bilineal por hardware a la GPU de WPF
+        const int maxInternalDimension = 1920;
+        int longestSide = Math.Max(pixelWidth, pixelHeight);
+        if (longestSide > maxInternalDimension)
+        {
+            double scaleDown = (double)maxInternalDimension / longestSide;
+            pixelWidth = Math.Max(4, (int)Math.Round(pixelWidth * scaleDown));
+            pixelHeight = Math.Max(4, (int)Math.Round(pixelHeight * scaleDown));
+        }
+
         if (_bitmap is null || _bitmap.PixelWidth != pixelWidth || _bitmap.PixelHeight != pixelHeight)
         {
             _bitmap = new WriteableBitmap(
                 pixelWidth,
                 pixelHeight,
-                96.0 * dpi.DpiScaleX,
-                96.0 * dpi.DpiScaleY,
+                96.0,
+                96.0,
                 PixelFormats.Pbgra32,
                 null);
         }

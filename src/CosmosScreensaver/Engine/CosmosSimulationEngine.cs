@@ -280,6 +280,13 @@ public sealed class CosmosSimulationEngine : IDisposable
                 _shootingStars.RemoveAt(i);
             }
         }
+
+        // 8. Ordenación in-place por profundidad Z (cero asignaciones en el GC por fotograma)
+        _nebulae.Sort(static (a, b) => b.Z.CompareTo(a.Z));
+        _galaxies.Sort(static (a, b) => b.Z.CompareTo(a.Z));
+        _solarSystems.Sort(static (a, b) => b.Z.CompareTo(a.Z));
+        _clusters.Sort(static (a, b) => b.Z.CompareTo(a.Z));
+        _blackHoles.Sort(static (a, b) => b.Z.CompareTo(a.Z));
     }
 
     public void Render(SKCanvas canvas, int width, int height, bool isMiniPreview = false)
@@ -319,7 +326,7 @@ public sealed class CosmosSimulationEngine : IDisposable
         // 2. Nebulosas Volumétricas modeladas como nubes de puntos de luz
         if (_settings.EnableNebulae)
         {
-            RenderNebulae(canvas, vanishX, vanishY, focalSpan, scaleFactor, glowBoost);
+            RenderNebulae(canvas, vanishX, vanishY, focalSpan, w, h, scaleFactor, glowBoost);
         }
 
         // 3. Estrellas Lejanas (Z >= 0.42) calculadas como puntos de luz
@@ -331,25 +338,25 @@ public sealed class CosmosSimulationEngine : IDisposable
         // 4. Galaxias compuestas enteramente por enjambres de puntos de luz estelares
         if (_settings.EnableSpiralGalaxies || _settings.EnableEllipticalGalaxies)
         {
-            RenderGalaxies(canvas, vanishX, vanishY, focalSpan, scaleFactor, glowBoost);
+            RenderGalaxies(canvas, vanishX, vanishY, focalSpan, w, h, scaleFactor, glowBoost);
         }
 
         // 5. Cúmulos Globulares en 3D
         if (_settings.EnableGlobularClusters)
         {
-            RenderGlobularClusters(canvas, vanishX, vanishY, focalSpan, scaleFactor, glowBoost);
+            RenderGlobularClusters(canvas, vanishX, vanishY, focalSpan, w, h, scaleFactor, glowBoost);
         }
 
         // 6. Sistemas Solares en perspectiva 3D
         if (_settings.EnableSolarSystems)
         {
-            RenderSolarSystems(canvas, vanishX, vanishY, focalSpan, scaleFactor, glowBoost);
+            RenderSolarSystems(canvas, vanishX, vanishY, focalSpan, w, h, scaleFactor, glowBoost);
         }
 
         // 7. Agujeros Negros: Swarm relativista de puntos de luz con efecto Doppler y Beaming
         if (_settings.EnableBlackHoles)
         {
-            RenderBlackHoles(canvas, glowBoost);
+            RenderBlackHoles(canvas, scaleFactor, glowBoost);
         }
 
         // 8. Red de Constelaciones (opcional)
@@ -449,64 +456,77 @@ public sealed class CosmosSimulationEngine : IDisposable
     }
 
     /// <summary>
-    /// Renderiza nebulosas interestelares como nubes matemáticas de puntos de luz de gas ionizado.
+    /// Renderiza nebulosas interestelares como nubes matemáticas de puntos de luz de gas ionizado
+    /// sin asignaciones de SKShader por partícula y con Frustum Culling.
     /// </summary>
-    private void RenderNebulae(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float scaleFactor, float glowBoost)
+    private void RenderNebulae(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float w, float h, float scaleFactor, float glowBoost)
     {
-        foreach (var neb in _nebulae.OrderByDescending(n => n.Z))
+        _additivePaint.Shader = null;
+
+        for (int nIdx = 0; nIdx < _nebulae.Count; nIdx++)
         {
+            var neb = _nebulae[nIdx];
             float invZ = 1.0f / Math.Max(0.08f, neb.Z);
             float cx = vanishX + neb.WorldX * invZ * focalSpan;
             float cy = vanishY + neb.WorldY * invZ * focalSpan;
+
+            float baseScale = neb.BaseRadius * invZ * 0.40f * scaleFactor;
+            float maxExtent = baseScale * 1.35f + 65f;
+            if (cx + maxExtent < 0f || cx - maxExtent > w || cy + maxExtent < 0f || cy - maxExtent > h)
+            {
+                continue;
+            }
 
             float depthFade = ComputeDepthEnvelope(neb.Z, nearFadeEnd: 0.16f, farFadeStart: 0.82f);
             if (depthFade <= 0.02f) continue;
 
             float rotRad = (neb.Rotation + _elapsedTime * neb.RotationSpeed) * (MathF.PI / 180f);
-            float cosR = MathF.Cos(rotRad);
-            float sinR = MathF.Sin(rotRad);
-
-            float baseScale = neb.BaseRadius * invZ * 0.40f * scaleFactor;
+            (float sinR, float cosR) = MathF.SinCos(rotRad);
             float breath = 1.0f + 0.06f * MathF.Sin(neb.PulsePhase);
+            float scaledBreath = baseScale * breath;
 
             for (int p = 0; p < neb.GasPoints.Length; p++)
             {
                 ref readonly var gp = ref neb.GasPoints[p];
 
                 // Deriva armónica 3D
-                float ox = gp.OffsetX + 0.04f * MathF.Sin(_elapsedTime * gp.DriftFrequency + gp.Phase);
-                float oy = gp.OffsetY + 0.04f * MathF.Cos(_elapsedTime * gp.DriftFrequency * 0.8f + gp.Phase);
+                float phaseArg = _elapsedTime * gp.DriftFrequency + gp.Phase;
+                (float sinD, float cosD) = MathF.SinCos(phaseArg);
+                float ox = gp.OffsetX + 0.04f * sinD;
+                float oy = gp.OffsetY + 0.04f * cosD;
 
-                float rx = (ox * cosR - oy * sinR) * baseScale * breath;
-                float ry = (ox * sinR + oy * cosR) * baseScale * breath;
-
-                float gx = cx + rx;
-                float gy = cy + ry;
+                float gx = cx + (ox * cosR - oy * sinR) * scaledBreath;
+                float gy = cy + (ox * sinR + oy * cosR) * scaledBreath;
 
                 float rPoint = Math.Clamp(gp.Radius * invZ * 0.35f * scaleFactor, 3.5f, 65f);
-                byte alpha = (byte)Math.Clamp(gp.Intensity * depthFade * glowBoost * 28f, 2f, 65f);
+                if (gx + rPoint < 0f || gx - rPoint > w || gy + rPoint < 0f || gy - rPoint > h)
+                {
+                    continue;
+                }
 
-                using var grad = SKShader.CreateRadialGradient(
-                    new SKPoint(gx, gy),
-                    rPoint,
-                    [gp.Color.WithAlpha(alpha), SKColors.Transparent],
-                    [0.0f, 1.0f],
-                    SKShaderTileMode.Clamp);
+                float rawAlpha = Math.Clamp(gp.Intensity * depthFade * glowBoost * 28f, 2f, 65f);
+                byte outerAlpha = (byte)Math.Max(1f, rawAlpha * 0.38f);
+                byte innerAlpha = (byte)Math.Max(2f, rawAlpha * 0.62f);
 
-                _additivePaint.Shader = grad;
+                // Dos capas aditivas concéntricas libres de asignación de SKShader
+                _additivePaint.Color = gp.Color.WithAlpha(outerAlpha);
                 canvas.DrawCircle(gx, gy, rPoint, _additivePaint);
-                _additivePaint.Shader = null;
+
+                _additivePaint.Color = gp.Color.WithAlpha(innerAlpha);
+                canvas.DrawCircle(gx, gy, rPoint * 0.52f, _additivePaint);
             }
         }
     }
 
     /// <summary>
-    /// Renderiza galaxias como enjambres de miles de puntos de luz estelares con rotación diferencial.
+    /// Renderiza galaxias como enjambres de miles de puntos de luz estelares con rotación diferencial,
+    /// Frustum Culling y trigonometría vectorizada MathF.SinCos.
     /// </summary>
-    private void RenderGalaxies(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float scaleFactor, float glowBoost)
+    private void RenderGalaxies(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float w, float h, float scaleFactor, float glowBoost)
     {
-        foreach (var gal in _galaxies.OrderByDescending(g => g.Z))
+        for (int gIdx = 0; gIdx < _galaxies.Count; gIdx++)
         {
+            var gal = _galaxies[gIdx];
             float invZ = 1.0f / Math.Max(0.07f, gal.Z);
             float cx = vanishX + gal.WorldX * invZ * focalSpan;
             float cy = vanishY + gal.WorldY * invZ * focalSpan;
@@ -515,49 +535,56 @@ public sealed class CosmosSimulationEngine : IDisposable
             ApplyGravitationalLensing(ref cx, ref cy, out _, out _);
 
             float galaxyRadius = gal.BaseRadius * invZ * 0.42f * scaleFactor;
+            float cullR = galaxyRadius * 1.15f;
+            if (cx + cullR < 0f || cx - cullR > w || cy + cullR < 0f || cy - cullR > h)
+            {
+                continue;
+            }
+
             float depthFade = ComputeDepthEnvelope(gal.Z, nearFadeEnd: 0.14f, farFadeStart: 0.82f);
             if (depthFade <= 0.02f) continue;
 
             float orientRad = gal.OrientationAngle * (MathF.PI / 180f);
-            float cosO = MathF.Cos(orientRad);
-            float sinO = MathF.Sin(orientRad);
+            (float sinO, float cosO) = MathF.SinCos(orientRad);
 
-            // Resplandor difuso del núcleo estelar denso
+            // Resplandor difuso del núcleo estelar denso (capas aditivas sin asignar SKShader)
+            _additivePaint.Shader = null;
             float coreGlowR = galaxyRadius * 0.18f;
-            using (var coreGlow = SKShader.CreateRadialGradient(
-                new SKPoint(cx, cy),
-                coreGlowR,
-                [
-                    SKColors.White.WithAlpha((byte)(160 * depthFade * glowBoost)),
-                    gal.CoreColor.WithAlpha((byte)(75 * depthFade * glowBoost)),
-                    SKColors.Transparent
-                ],
-                [0.0f, 0.45f, 1.0f],
-                SKShaderTileMode.Clamp))
-            {
-                _additivePaint.Shader = coreGlow;
-                canvas.DrawCircle(cx, cy, coreGlowR, _additivePaint);
-                _additivePaint.Shader = null;
-            }
+            _additivePaint.Color = gal.CoreColor.WithAlpha((byte)Math.Clamp(42f * depthFade * glowBoost, 4f, 180f));
+            canvas.DrawCircle(cx, cy, coreGlowR, _additivePaint);
+            _additivePaint.Color = gal.CoreColor.WithAlpha((byte)Math.Clamp(75f * depthFade * glowBoost, 8f, 220f));
+            canvas.DrawCircle(cx, cy, coreGlowR * 0.55f, _additivePaint);
+            _additivePaint.Color = SKColors.White.WithAlpha((byte)Math.Clamp(145f * depthFade * glowBoost, 15f, 255f));
+            canvas.DrawCircle(cx, cy, coreGlowR * 0.24f, _additivePaint);
+
+            float spinFactor = _elapsedTime * (gal.SpinSpeed * 0.15f);
+            float sizeBase = invZ * 0.35f * scaleFactor;
+            float alphaBase = depthFade * glowBoost * 225f;
 
             // Renderizar cada punto de luz estelar de la galaxia
             for (int i = 0; i < gal.Stars.Length; i++)
             {
                 ref readonly var st = ref gal.Stars[i];
-                float angle = st.Angle + _elapsedTime * st.OrbitalSpeed * (gal.SpinSpeed * 0.15f);
+                float angle = st.Angle + spinFactor * st.OrbitalSpeed;
+                (float sinA, float cosA) = MathF.SinCos(angle);
                 float r = st.Radius * galaxyRadius;
 
                 // Coordenadas en el plano inclinado de la galaxia
-                float lx = MathF.Cos(angle) * r;
-                float ly = MathF.Sin(angle) * r * gal.TiltRatio + st.VerticalOffset * galaxyRadius;
+                float lx = cosA * r;
+                float ly = sinA * r * gal.TiltRatio + st.VerticalOffset * galaxyRadius;
 
                 // Rotación por ángulo de orientación en el cielo
                 float sx = cx + (lx * cosO - ly * sinO);
                 float sy = cy + (lx * sinO + ly * cosO);
 
+                if (sx < -5f || sx > w + 5f || sy < -5f || sy > h + 5f)
+                {
+                    continue;
+                }
+
                 float twinkle = 0.70f + 0.30f * MathF.Sin(_elapsedTime * 2.8f + st.TwinklePhase);
-                float starR = Math.Clamp(st.Size * invZ * 0.35f * scaleFactor * twinkle, 0.65f, 4.2f);
-                byte alpha = (byte)Math.Clamp(st.Luminosity * twinkle * depthFade * glowBoost * 225f, 15f, 255f);
+                float starR = Math.Clamp(st.Size * sizeBase * twinkle, 0.65f, 4.2f);
+                byte alpha = (byte)Math.Clamp(st.Luminosity * twinkle * alphaBase, 15f, 255f);
 
                 _additivePaint.Color = st.Color.WithAlpha(alpha);
                 canvas.DrawCircle(sx, sy, starR, _additivePaint);
@@ -567,12 +594,16 @@ public sealed class CosmosSimulationEngine : IDisposable
 
     /// <summary>
     /// Renderiza un Agujero Negro exclusivamente mediante puntos de luz físicos relativistas:
-    /// jets de sincrotrón, disco de acreción con efecto Doppler (beaming) y lente gravitacional interna.
+    /// jets de sincrotrón, disco de acreción con invariantes Doppler precalculadas y lente gravitacional interna.
     /// </summary>
-    private void RenderBlackHoles(SKCanvas canvas, float glowBoost)
+    private void RenderBlackHoles(SKCanvas canvas, float scaleFactor, float glowBoost)
     {
-        foreach (var bh in _blackHoles.OrderByDescending(b => b.Z))
+        _additivePaint.Shader = null;
+        float jetSizeScale = scaleFactor * 0.85f + 0.3f;
+
+        for (int bIdx = 0; bIdx < _blackHoles.Count; bIdx++)
         {
+            var bh = _blackHoles[bIdx];
             if (!bh.IsVisibleOnScreen) continue;
 
             float cx = bh.ScreenX;
@@ -593,41 +624,42 @@ public sealed class CosmosSimulationEngine : IDisposable
                     ref readonly var jp = ref bh.JetParticles[j];
                     float currentZ = (jp.HeightZ + _elapsedTime * jp.SpeedZ) % 9.0f;
                     float angle = jp.Phase + _elapsedTime * jp.HelixFrequency;
+                    (float sinJ, float cosJ) = MathF.SinCos(angle);
 
                     float helixRadius = (jp.HelixRadius + currentZ * 0.12f) * rHorizon * 0.55f;
-                    float jx = MathF.Cos(angle) * helixRadius;
-                    float jy = MathF.Sin(angle) * helixRadius * bh.DiskAspect;
+                    float jx = cosJ * helixRadius;
+                    float jy = sinJ * helixRadius * bh.DiskAspect;
                     float jz = currentZ * rHorizon * 1.25f * jp.PoleDirection;
 
-                    float attenuation = Math.Clamp(1.0f - currentZ / 9.0f, 0.05f, 1.0f);
+                    float attenuation = Math.Clamp(1.0f - currentZ * (1.0f / 9.0f), 0.05f, 1.0f);
                     byte jetAlpha = (byte)Math.Clamp(attenuation * depthFade * glowBoost * 225f, 10f, 255f);
 
                     _additivePaint.Color = jp.Color.WithAlpha(jetAlpha);
-                    canvas.DrawCircle(jx, jz + jy, Math.Max(0.75f, jp.BaseSize * (scaleFactor() * 0.85f + 0.3f) * attenuation), _additivePaint);
+                    canvas.DrawCircle(jx, jz + jy, Math.Max(0.75f, jp.BaseSize * jetSizeScale * attenuation), _additivePaint);
                 }
             }
 
-            // 2. Puntos de luz del Disco de Acreción con efecto Doppler/Beaming y Lente Gravitacional de Einstein
-            const float rIsco = CosmicPointLightMath.BlackHoleIscoRadius;
-            const float rOuter = CosmicPointLightMath.BlackHoleOuterRadius;
+            // 2. Puntos de luz del Disco de Acreción con invariantes Doppler precalculados
+            float spinTime = _elapsedTime * bh.SpinSpeed;
+            float rScale = rHorizon * 1.25f;
+            float topArcAspect = 0.82f + 0.18f * bh.DiskAspect;
+            float bottomArcAspect = 0.55f * bh.DiskAspect;
 
             for (int p = 0; p < bh.DiskParticles.Length; p++)
             {
                 ref readonly var dp = ref bh.DiskParticles[p];
-                float angle = dp.InitialAngle + _elapsedTime * dp.OrbitalSpeed * bh.SpinSpeed;
+                float angle = dp.InitialAngle + spinTime * dp.OrbitalSpeed;
+                (float sinA, float cosA) = MathF.SinCos(angle);
 
-                float r = (dp.Radius / rIsco) * rHorizon * 1.25f;
-                float x0 = r * MathF.Cos(angle);
-                float y0 = r * MathF.Sin(angle);
+                float r = dp.NormalizedRadius * rScale;
+                float x0 = r * cosA;
+                float y0 = r * sinA;
 
-                // Velocidad orbital en unidades de c
-                float vOrb = 0.55f / MathF.Sqrt(Math.Max(1.0f, dp.Radius / rIsco));
-                float vLos = -vOrb * MathF.Sin(angle); // Componente hacia el observador
-
-                // Factor Doppler relativista delta = 1 / (gamma * (1 - v/c))
-                float gamma = 1.0f / MathF.Sqrt(Math.Max(0.05f, 1.0f - vOrb * vOrb));
-                float delta = 1.0f / (gamma * (1.0f - vLos));
-                float beaming = Math.Clamp(MathF.Pow(delta, 2.8f), 0.35f, 3.5f);
+                // Componente de velocidad hacia el observador y factor Doppler usando invariantes precalculados
+                float vLos = -dp.VOrb * sinA;
+                float delta = dp.InvGamma / (1.0f - vLos);
+                float delta3 = delta * delta * delta;
+                float beaming = Math.Clamp(delta3, 0.35f, 3.5f);
 
                 // Desplazamiento Doppler cromático
                 SKColor pointColor = vLos > 0.08f
@@ -642,14 +674,13 @@ public sealed class CosmosSimulationEngine : IDisposable
                 // Se proyecta directamente en el plano elíptico inclinado
                 if (y0 <= 0)
                 {
-                    float xProj = x0;
                     float yProj = y0 * bh.DiskAspect + dp.HeightFlaring * rHorizon;
-                    canvas.DrawCircle(xProj, yProj, pRadius, _additivePaint);
+                    canvas.DrawCircle(x0, yProj, pRadius, _additivePaint);
                 }
                 else
                 {
-                    // Mitad trasera (y0 > 0): La luz es curvada gravitacionalmente alrededor de la esfera negra (Interstellar / Gargantua)
-                    float rLensed = rHorizon * (1.25f + 0.38f * (dp.Radius - rIsco) / (rOuter - rIsco));
+                    // Mitad trasera (y0 > 0): La luz es curvada gravitacionalmente alrededor de la esfera negra
+                    float rLensed = rHorizon * dp.LensedRadiusFactor;
                     float xSq = x0 * x0;
                     float lensedRSq = rLensed * rLensed;
 
@@ -658,20 +689,19 @@ public sealed class CosmosSimulationEngine : IDisposable
                         float yArc = MathF.Sqrt(lensedRSq - xSq);
 
                         // Arco primario superior (luz doblada por encima de la singularidad)
-                        float yLensedTop = -yArc * (0.82f + 0.18f * bh.DiskAspect) + dp.HeightFlaring * rHorizon * 0.5f;
+                        float yLensedTop = -yArc * topArcAspect + dp.HeightFlaring * rHorizon * 0.5f;
                         canvas.DrawCircle(x0, yLensedTop, pRadius, _additivePaint);
 
                         // Arco secundario inferior tenue (luz doblada por debajo de la singularidad)
-                        float yLensedBottom = yArc * 0.55f * bh.DiskAspect;
+                        float yLensedBottom = yArc * bottomArcAspect;
                         _additivePaint.Color = pointColor.WithAlpha((byte)(pAlpha * 0.45f));
                         canvas.DrawCircle(x0, yLensedBottom, pRadius * 0.85f, _additivePaint);
                     }
                     else
                     {
                         // Extremos laterales exteriores del disco
-                        float xProj = x0;
                         float yProj = y0 * bh.DiskAspect + dp.HeightFlaring * rHorizon;
-                        canvas.DrawCircle(xProj, yProj, pRadius, _additivePaint);
+                        canvas.DrawCircle(x0, yProj, pRadius, _additivePaint);
                     }
                 }
             }
@@ -681,10 +711,11 @@ public sealed class CosmosSimulationEngine : IDisposable
             {
                 ref readonly var pr = ref bh.PhotonRingParticles[rIdx];
                 float rAngle = pr.Angle + _elapsedTime * pr.OrbitalSpeed;
+                (float sinP, float cosP) = MathF.SinCos(rAngle);
                 float ringR = rHorizon * 1.04f * pr.RadialJitter;
 
-                float px = ringR * MathF.Cos(rAngle);
-                float py = ringR * MathF.Sin(rAngle) * bh.DiskAspect;
+                float px = ringR * cosP;
+                float py = ringR * sinP * bh.DiskAspect;
 
                 _additivePaint.Color = SKColors.White.WithAlpha((byte)(245 * pr.Brightness * depthFade));
                 canvas.DrawCircle(px, py, pr.Size, _additivePaint);
@@ -701,13 +732,11 @@ public sealed class CosmosSimulationEngine : IDisposable
 
             canvas.Restore();
         }
-
-        float scaleFactor() => MathF.Min(canvas.LocalClipBounds.Width, canvas.LocalClipBounds.Height) / 1080f;
     }
 
     /// <summary>
     /// Renderiza estrellas como puntos de luz matemáticos con ley del inverso del cuadrado,
-    /// picos de difracción y estelas de velocidad hiperespacial.
+    /// picos de difracción y estelas de velocidad hiperespacial (cero asignaciones SKShader en bucle).
     /// </summary>
     private void RenderStarsLayer(
         SKCanvas canvas,
@@ -724,6 +753,8 @@ public sealed class CosmosSimulationEngine : IDisposable
         _additivePaint.Shader = null;
         var paletteColors = _palette.StarColors;
         float warpAmount = (float)_settings.WarpSpeedEffect;
+        float sqrtGlow = MathF.Sqrt(glowBoost);
+        float sizeScale = 0.24f * (0.85f + 0.3f * scaleFactor);
 
         for (int i = 0; i < _stars.Count; i++)
         {
@@ -744,7 +775,7 @@ public sealed class CosmosSimulationEngine : IDisposable
 
             float depthFactor = Math.Clamp(1.05f - s.Z, 0.12f, 1.0f);
             float twinkle = 0.65f + 0.35f * MathF.Sin(_elapsedTime * s.TwinkleSpeed + s.TwinklePhase);
-            float radius = Math.Clamp(s.BaseSize * invZ * 0.24f * (0.85f + 0.3f * scaleFactor), 0.55f, 7.5f);
+            float radius = Math.Clamp(s.BaseSize * invZ * sizeScale, 0.55f, 7.5f);
 
             SKColor starColor = paletteColors[s.ColorIndex % paletteColors.Length];
             byte alpha = (byte)Math.Clamp(twinkle * depthFactor * 255f, 30f, 255f);
@@ -756,8 +787,9 @@ public sealed class CosmosSimulationEngine : IDisposable
                 _strokePaint.Color = starColor.WithAlpha(alpha);
                 _strokePaint.StrokeWidth = Math.Max(1.3f, radius * 1.15f);
                 _strokePaint.StrokeCap = SKStrokeCap.Round;
-                float tx = -MathF.Sin(bhAngle * (MathF.PI / 180f)) * einsteinStretch;
-                float ty = MathF.Cos(bhAngle * (MathF.PI / 180f)) * einsteinStretch;
+                (float sinBh, float cosBh) = MathF.SinCos(bhAngle * (MathF.PI / 180f));
+                float tx = -sinBh * einsteinStretch;
+                float ty = cosBh * einsteinStretch;
                 canvas.DrawLine(sx - tx, sy - ty, sx + tx, sy + ty, _strokePaint);
                 _strokePaint.BlendMode = SKBlendMode.SrcOver;
                 continue;
@@ -789,23 +821,17 @@ public sealed class CosmosSimulationEngine : IDisposable
 
             if (drawAsGiant)
             {
-                float haloRadius = radius * (4.8f + twinkle * 2.2f) * MathF.Sqrt(glowBoost);
-                using (var haloShader = SKShader.CreateRadialGradient(
-                    new SKPoint(sx, sy),
-                    haloRadius,
-                    [
-                        SKColors.White.WithAlpha(250),
-                        starColor.WithAlpha((byte)Math.Clamp(165 * glowBoost, 60, 240)),
-                        starColor.WithAlpha((byte)Math.Clamp(45 * glowBoost, 15, 110)),
-                        SKColors.Transparent
-                    ],
-                    [0.0f, 0.18f, 0.52f, 1.0f],
-                    SKShaderTileMode.Clamp))
-                {
-                    _additivePaint.Shader = haloShader;
-                    canvas.DrawCircle(sx, sy, haloRadius, _additivePaint);
-                    _additivePaint.Shader = null;
-                }
+                float haloRadius = radius * (4.8f + twinkle * 2.2f) * sqrtGlow;
+
+                // Halo multicapa aditivo (cero asignaciones de SKShader por estrella gigante)
+                _additivePaint.Color = starColor.WithAlpha((byte)Math.Clamp(28f * glowBoost * depthFactor, 8f, 80f));
+                canvas.DrawCircle(sx, sy, haloRadius, _additivePaint);
+
+                _additivePaint.Color = starColor.WithAlpha((byte)Math.Clamp(95f * glowBoost * depthFactor, 25f, 190f));
+                canvas.DrawCircle(sx, sy, haloRadius * 0.46f, _additivePaint);
+
+                _additivePaint.Color = SKColors.White.WithAlpha((byte)Math.Clamp(185f * depthFactor, 60f, 245f));
+                canvas.DrawCircle(sx, sy, haloRadius * 0.18f, _additivePaint);
 
                 float spikeLen = radius * (9.5f + twinkle * 5.5f) * Math.Min(1.45f, glowBoost);
                 DrawDiffractionSpikes(canvas, sx, sy, spikeLen, starColor, alpha, s.HasSixSpikes);
@@ -830,37 +856,30 @@ public sealed class CosmosSimulationEngine : IDisposable
         byte alpha,
         bool sixSpikes)
     {
-        _strokePaint.StrokeWidth = 1.25f;
         _strokePaint.BlendMode = SKBlendMode.Plus;
+        _strokePaint.StrokeCap = SKStrokeCap.Round;
 
         void DrawFadingRay(float dx, float dy, byte peakAlpha)
         {
-            using var rayShader = SKShader.CreateLinearGradient(
-                new SKPoint(cx - dx, cy - dy),
-                new SKPoint(cx + dx, cy + dy),
-                [
-                    SKColors.Transparent,
-                    color.WithAlpha((byte)(peakAlpha * 0.65f)),
-                    SKColors.White.WithAlpha(peakAlpha),
-                    color.WithAlpha((byte)(peakAlpha * 0.65f)),
-                    SKColors.Transparent
-                ],
-                [0.0f, 0.36f, 0.5f, 0.64f, 1.0f],
-                SKShaderTileMode.Clamp);
-
-            _strokePaint.Shader = rayShader;
+            // Rayo difractivo de 2 etapas aditivas sin asignar SKShader.CreateLinearGradient
+            _strokePaint.StrokeWidth = 1.15f;
+            _strokePaint.Color = color.WithAlpha((byte)(peakAlpha * 0.38f));
             canvas.DrawLine(cx - dx, cy - dy, cx + dx, cy + dy, _strokePaint);
-            _strokePaint.Shader = null;
+
+            float innerDx = dx * 0.46f;
+            float innerDy = dy * 0.46f;
+            _strokePaint.StrokeWidth = 1.45f;
+            _strokePaint.Color = SKColors.White.WithAlpha((byte)(peakAlpha * 0.78f));
+            canvas.DrawLine(cx - innerDx, cy - innerDy, cx + innerDx, cy + innerDy, _strokePaint);
         }
 
         byte mainAlpha = (byte)Math.Clamp(alpha * 0.85f, 40f, 245f);
         if (sixSpikes)
         {
-            for (int k = 0; k < 3; k++)
-            {
-                float angle = k * (MathF.PI / 3f) + MathF.PI / 6f;
-                DrawFadingRay(MathF.Cos(angle) * length, MathF.Sin(angle) * length, mainAlpha);
-            }
+            // 3 ejes a 30°, 90° y 150° precalculados
+            DrawFadingRay(0.8660254f * length, 0.5f * length, mainAlpha);
+            DrawFadingRay(0f, length, mainAlpha);
+            DrawFadingRay(-0.8660254f * length, 0.5f * length, mainAlpha);
         }
         else
         {
@@ -868,22 +887,30 @@ public sealed class CosmosSimulationEngine : IDisposable
             DrawFadingRay(0f, length, mainAlpha);
 
             float diag = length * 0.42f;
-            DrawFadingRay(diag, diag, (byte)(mainAlpha * 0.48f));
-            DrawFadingRay(diag, -diag, (byte)(mainAlpha * 0.48f));
+            byte diagAlpha = (byte)(mainAlpha * 0.48f);
+            DrawFadingRay(diag, diag, diagAlpha);
+            DrawFadingRay(diag, -diag, diagAlpha);
         }
 
         _strokePaint.BlendMode = SKBlendMode.SrcOver;
     }
 
-    private void RenderSolarSystems(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float scaleFactor, float glowBoost)
+    private void RenderSolarSystems(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float w, float h, float scaleFactor, float glowBoost)
     {
-        foreach (var sys in _solarSystems.OrderByDescending(s => s.Z))
+        for (int sIdx = 0; sIdx < _solarSystems.Count; sIdx++)
         {
+            var sys = _solarSystems[sIdx];
             float invZ = 1.0f / Math.Max(0.065f, sys.Z);
             float cx = vanishX + sys.WorldX * invZ * focalSpan;
             float cy = vanishY + sys.WorldY * invZ * focalSpan;
 
             float systemRadius = sys.BaseRadius * invZ * 0.38f * scaleFactor;
+            float cullR = systemRadius * 1.25f;
+            if (cx + cullR < 0f || cx - cullR > w || cy + cullR < 0f || cy - cullR > h)
+            {
+                continue;
+            }
+
             float depthFade = ComputeDepthEnvelope(sys.Z, nearFadeEnd: 0.13f, farFadeStart: 0.84f);
             if (depthFade <= 0.02f || systemRadius < 4f) continue;
 
@@ -893,8 +920,7 @@ public sealed class CosmosSimulationEngine : IDisposable
             canvas.Translate(cx, cy);
 
             float orientRad = sys.PlaneOrientation * (MathF.PI / 180f);
-            float cosO = MathF.Cos(orientRad);
-            float sinO = MathF.Sin(orientRad);
+            (float sinO, float cosO) = MathF.SinCos(orientRad);
 
             // 1. Órbitas planetarias elípticas
             canvas.Save();
@@ -902,10 +928,10 @@ public sealed class CosmosSimulationEngine : IDisposable
             canvas.Scale(1.0f, sys.PlaneTiltRatio);
 
             _strokePaint.StrokeWidth = Math.Max(0.75f, 1.1f / Math.Max(0.25f, sys.Z));
+            _strokePaint.Color = sys.SunCoronaColor.WithAlpha((byte)(36f * depthFade));
             for (int p = 0; p < sys.Planets.Length; p++)
             {
                 float orbitR = sys.Planets[p].OrbitRadiusRatio * systemRadius;
-                _strokePaint.Color = sys.SunCoronaColor.WithAlpha((byte)(36f * depthFade));
                 canvas.DrawCircle(0, 0, orbitR, _strokePaint);
             }
             canvas.Restore();
@@ -937,30 +963,19 @@ public sealed class CosmosSimulationEngine : IDisposable
                 ref readonly var planet = ref sys.Planets[p];
                 float orbitR = planet.OrbitRadiusRatio * systemRadius;
                 float angle = planet.OrbitAngle + _elapsedTime * planet.OrbitSpeed;
+                (float sinA, float cosA) = MathF.SinCos(angle);
 
-                float localX = MathF.Cos(angle) * orbitR;
-                float localY = MathF.Sin(angle) * orbitR * sys.PlaneTiltRatio;
+                float localX = cosA * orbitR;
+                float localY = sinA * orbitR * sys.PlaneTiltRatio;
 
                 float px = localX * cosO - localY * sinO;
                 float py = localX * sinO + localY * cosO;
 
                 float pr = Math.Clamp(planet.PlanetRadius * invZ * 0.36f * scaleFactor, 1.6f, 28f);
 
-                // Halo atmosférico
-                using (var atmoShader = SKShader.CreateRadialGradient(
-                    new SKPoint(px, py),
-                    pr * 1.65f,
-                    [
-                        planet.AtmosphereColor.WithAlpha((byte)(125 * depthFade)),
-                        SKColors.Transparent
-                    ],
-                    [0.5f, 1.0f],
-                    SKShaderTileMode.Clamp))
-                {
-                    _additivePaint.Shader = atmoShader;
-                    canvas.DrawCircle(px, py, pr * 1.65f, _additivePaint);
-                    _additivePaint.Shader = null;
-                }
+                // Halo atmosférico aditivo sin SKShader
+                _additivePaint.Color = planet.AtmosphereColor.WithAlpha((byte)(68 * depthFade));
+                canvas.DrawCircle(px, py, pr * 1.55f, _additivePaint);
 
                 // Sombreado diurno/nocturno hacia el Sol central
                 float distToSun = MathF.Max(1f, MathF.Sqrt(px * px + py * py));
@@ -1003,9 +1018,10 @@ public sealed class CosmosSimulationEngine : IDisposable
                 if (planet.HasMoon && pr > 2.5f)
                 {
                     float mAngle = planet.MoonAngle + _elapsedTime * planet.MoonSpeed;
+                    (float sinM, float cosM) = MathF.SinCos(mAngle);
                     float mDist = pr * (planet.HasRings ? 3.1f : 2.15f);
-                    float mx = px + MathF.Cos(mAngle) * mDist;
-                    float my = py + MathF.Sin(mAngle) * mDist * 0.55f;
+                    float mx = px + cosM * mDist;
+                    float my = py + sinM * mDist * 0.55f;
                     float mr = Math.Max(1.0f, pr * 0.24f);
 
                     _solidPaint.Color = new SKColor(215, 225, 240, (byte)(220 * depthFade));
@@ -1017,46 +1033,49 @@ public sealed class CosmosSimulationEngine : IDisposable
         }
     }
 
-    private void RenderGlobularClusters(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float scaleFactor, float glowBoost)
+    private void RenderGlobularClusters(SKCanvas canvas, float vanishX, float vanishY, float focalSpan, float w, float h, float scaleFactor, float glowBoost)
     {
-        foreach (var cl in _clusters.OrderByDescending(c => c.Z))
+        _additivePaint.Shader = null;
+
+        for (int cIdx = 0; cIdx < _clusters.Count; cIdx++)
         {
+            var cl = _clusters[cIdx];
             float invZ = 1.0f / Math.Max(0.08f, cl.Z);
             float cx = vanishX + cl.WorldX * invZ * focalSpan;
             float cy = vanishY + cl.WorldY * invZ * focalSpan;
 
             float clusterRadius = cl.BaseRadius * invZ * 0.38f * scaleFactor;
+            float cullR = clusterRadius * 1.15f;
+            if (cx + cullR < 0f || cx - cullR > w || cy + cullR < 0f || cy - cullR > h)
+            {
+                continue;
+            }
+
             float depthFade = ComputeDepthEnvelope(cl.Z, nearFadeEnd: 0.14f, farFadeStart: 0.82f);
             if (depthFade <= 0.02f) continue;
 
-            using (var coreGlow = SKShader.CreateRadialGradient(
-                new SKPoint(cx, cy),
-                clusterRadius * 0.85f,
-                [
-                    cl.CoreColor.WithAlpha((byte)Math.Clamp(115 * depthFade * glowBoost, 10, 195)),
-                    cl.CoreColor.WithAlpha((byte)Math.Clamp(35 * depthFade * glowBoost, 5, 85)),
-                    SKColors.Transparent
-                ],
-                [0.0f, 0.45f, 1.0f],
-                SKShaderTileMode.Clamp))
-            {
-                _additivePaint.Shader = coreGlow;
-                canvas.DrawCircle(cx, cy, clusterRadius * 0.85f, _additivePaint);
-                _additivePaint.Shader = null;
-            }
+            // Halo del cúmulo globular mediante capas aditivas (cero asignaciones SKShader)
+            _additivePaint.Color = cl.CoreColor.WithAlpha((byte)Math.Clamp(32f * depthFade * glowBoost, 4f, 90f));
+            canvas.DrawCircle(cx, cy, clusterRadius * 0.85f, _additivePaint);
+
+            _additivePaint.Color = cl.CoreColor.WithAlpha((byte)Math.Clamp(75f * depthFade * glowBoost, 10f, 165f));
+            canvas.DrawCircle(cx, cy, clusterRadius * 0.42f, _additivePaint);
+
+            float sizeBase = invZ * 0.32f * scaleFactor;
 
             for (int i = 0; i < cl.Stars.Length; i++)
             {
                 ref readonly var st = ref cl.Stars[i];
                 float angle = st.OrbitAngle + _elapsedTime * st.OrbitSpeed + cl.RotationAngle;
+                (float sinA, float cosA) = MathF.SinCos(angle);
                 float r = st.OrbitRadius * clusterRadius;
 
-                float sx = cx + MathF.Cos(angle) * r;
-                float sy = cy + MathF.Sin(angle) * r;
+                float sx = cx + cosA * r;
+                float sy = cy + sinA * r;
                 float tw = 0.6f + 0.4f * MathF.Sin(_elapsedTime * 3.2f + st.TwinklePhase);
 
                 _additivePaint.Color = st.Color.WithAlpha((byte)(tw * 215f * depthFade));
-                canvas.DrawCircle(sx, sy, Math.Clamp(st.Size * invZ * 0.32f * scaleFactor, 0.6f, 3.8f), _additivePaint);
+                canvas.DrawCircle(sx, sy, Math.Clamp(st.Size * sizeBase, 0.6f, 3.8f), _additivePaint);
             }
         }
     }

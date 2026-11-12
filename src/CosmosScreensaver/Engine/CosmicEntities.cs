@@ -26,13 +26,17 @@ public struct StarParticle
 /// </summary>
 public struct AccretionDiskParticle
 {
-    public float Radius;          // Distancia radial al centro r (en unidades de r_s)
-    public float InitialAngle;    // Ángulo orbital inicial phi_0
-    public float OrbitalSpeed;    // Velocidad angular relativista Omega(r) = sqrt(GM / r^3)
-    public float HeightFlaring;   // Altura vertical z en el disco acampanado
-    public float BaseSize;        // Radio del punto de luz
-    public SKColor BaseColor;     // Color según perfil de temperatura T(r) proporcional a r^(-3/4)
-    public float Luminosity;      // Brillo intrínseco de emisión de plasma
+    public float Radius;               // Distancia radial al centro r (en unidades de r_s)
+    public float NormalizedRadius;     // (Radius / r_ISCO) * 1.25f precalculado
+    public float InitialAngle;         // Ángulo orbital inicial phi_0
+    public float OrbitalSpeed;         // Velocidad angular relativista Omega(r) = sqrt(GM / r^3)
+    public float VOrb;                 // Velocidad orbital v/c precalculada
+    public float InvGamma;             // 1 / gamma = sqrt(1 - v^2/c^2) precalculado
+    public float LensedRadiusFactor;   // Factor de curvatura de lente gravitacional precalculado
+    public float HeightFlaring;        // Altura vertical z en el disco acampanado
+    public float BaseSize;             // Radio del punto de luz
+    public SKColor BaseColor;          // Color según perfil de temperatura T(r) proporcional a r^(-3/4)
+    public float Luminosity;           // Brillo intrínseco de emisión de plasma
 }
 
 /// <summary>
